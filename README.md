@@ -1,6 +1,6 @@
 # Mayfair WhatsApp Campaigns
 
-A private web dashboard for importing Excel contacts, validating international phone numbers, sending the approved Mayfair Car Parts template through the official WhatsApp Business Cloud API, tracking webhook results, and exporting a detailed Excel report.
+A private web dashboard for importing Excel contacts, validating international phone numbers, sending the approved Mayfair Car Parts template through the official WhatsApp Business Cloud API, and exporting a detailed Excel report.
 
 ## Included workflow
 
@@ -10,7 +10,7 @@ A private web dashboard for importing Excel contacts, validating international p
 4. Reject malformed, impossible, and duplicate numbers before sending.
 5. Save the campaign and its contact rows in D1.
 6. Submit valid contacts in batches of 20, with five concurrent WhatsApp requests and retries for temporary failures.
-7. Receive `sent`, `delivered`, `read`, and `failed` events through the signed Meta webhook.
+7. Save the immediate API acceptance or rejection for each number.
 8. Download a workbook with `Results`, `Summary`, and `Errors` sheets.
 
 The original uploaded workbook is read in the browser and is never modified.
@@ -49,14 +49,9 @@ Copy `.env.example` to `.env.local` for local development and provide:
 - `META_TEMPLATE_NAME`: the exact approved template name
 - `META_TEMPLATE_LANGUAGE`: the approved template language code
 - `META_GRAPH_API_VERSION`: the Graph API version enabled for the Meta app
-- `META_WEBHOOK_VERIFY_TOKEN`: a private value used during webhook setup
-- `META_APP_SECRET`: used to verify `x-hub-signature-256` on webhook events
-
-The webhook callback URL is:
-
-`https://YOUR-SITE/api/webhooks/whatsapp`
-
 When the required outbound credentials are absent, the dashboard operates in visibly labelled demo mode and does not contact WhatsApp.
+
+Webhook tracking is intentionally excluded from this version. A successful result means the WhatsApp API accepted the message request; it does not confirm final delivery or reading.
 
 ## Error handling
 
@@ -66,5 +61,4 @@ When the required outbound credentials are absent, the dashboard operates in vis
 - Temporary API failures and rate limits are retried with exponential delay.
 - Authentication, access, payment, and template configuration errors pause the campaign.
 - Completed rows are stored so a retry does not resend them.
-- Webhooks require a valid HMAC signature.
 - Detailed local and WhatsApp errors are retained in the downloadable report.

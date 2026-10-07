@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   LoaderCircle,
   MessageCircleMore,
-  RefreshCw,
   Send,
   Upload,
   UsersRound,
@@ -198,13 +197,8 @@ export function CampaignDashboard() {
   const counts = useMemo(() => {
     const valid = contacts.filter((contact) => contact.validationStatus === "valid").length;
     const needsReview = contacts.length - valid;
-    const awaiting = contacts.filter((contact) =>
-      ["not_checked", "queued", "sent"].includes(contact.whatsappStatus),
-    ).length;
-    const delivered = contacts.filter((contact) =>
-      ["delivered", "read"].includes(contact.whatsappStatus),
-    ).length;
-    return { imported: contacts.length, valid, needsReview, awaiting, delivered };
+    const submitted = contacts.filter((contact) => contact.whatsappStatus === "sent").length;
+    return { imported: contacts.length, valid, needsReview, submitted };
   }, [contacts]);
 
   useEffect(() => {
@@ -343,7 +337,7 @@ export function CampaignDashboard() {
 
       setSendProgress(100);
       toast.success(mode === "live"
-        ? "Campaign submitted. Delivery updates will continue through WhatsApp webhooks."
+        ? "Campaign submitted. Immediate WhatsApp API results were saved."
         : "Demo campaign completed. No WhatsApp messages were sent.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sending stopped unexpectedly.");
@@ -383,7 +377,7 @@ export function CampaignDashboard() {
         ["Imported", current.length],
         ["Valid", current.filter((row) => row.validationStatus === "valid").length],
         ["Invalid or duplicate", current.filter((row) => row.validationStatus !== "valid").length],
-        ["Delivered or read", current.filter((row) => ["delivered", "read"].includes(row.whatsappStatus)).length],
+        ["Submitted to WhatsApp", current.filter((row) => row.whatsappStatus === "sent").length],
         ["Failed or unavailable", current.filter((row) => ["failed", "unavailable"].includes(row.whatsappStatus)).length],
       ];
       const workbook = XLSX.utils.book_new();
@@ -402,7 +396,7 @@ export function CampaignDashboard() {
     { value: counts.imported, label: "Imported", icon: FileSpreadsheet, colour: "text-slate-700" },
     { value: counts.valid, label: "Valid", icon: CheckCircle2, colour: "text-emerald-700" },
     { value: counts.needsReview, label: "Needs review", icon: CircleAlert, colour: "text-amber-700" },
-    { value: counts.delivered || counts.awaiting, label: counts.delivered ? "Delivered / read" : "Awaiting result", icon: Clock3, colour: "text-sky-700" },
+    { value: counts.submitted, label: "Submitted", icon: Clock3, colour: "text-sky-700" },
   ];
 
   return (
@@ -451,11 +445,6 @@ export function CampaignDashboard() {
               <p className="mt-2 text-base text-muted-foreground">Upload your workshop list and review every number before messaging.</p>
             </div>
             <div className="flex gap-2">
-              {campaignId && (
-                <Button variant="outline" size="icon" aria-label="Refresh delivery results" onClick={() => void refreshResults().then(() => toast.success("Results refreshed.")).catch((error) => toast.error(error.message))}>
-                  <RefreshCw />
-                </Button>
-              )}
               <Button variant="outline" className="bg-white" disabled={contacts.length === 0} onClick={() => void downloadReport()}>
                 <Download />Download report
               </Button>
@@ -556,7 +545,7 @@ export function CampaignDashboard() {
             <CardHeader className="border-b py-5">
               <div>
                 <CardTitle>Contact review</CardTitle>
-                <CardDescription className="mt-1">Numbers are normalized to E.164 international format before sending.</CardDescription>
+                <CardDescription className="mt-1">Numbers are normalized before sending; the report records immediate API results.</CardDescription>
               </div>
               {campaignId && <Badge variant="outline" className="font-mono text-[11px]">Saved</Badge>}
             </CardHeader>
