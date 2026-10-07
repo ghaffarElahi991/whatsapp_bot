@@ -90,6 +90,10 @@ const PHONE_HEADERS = new Set([
 const NAME_HEADERS = new Set(["name", "contactname", "workshop", "businessname", "company"]);
 
 type AppMode = "loading" | "demo" | "live" | "offline";
+type ConfigDiagnostics = {
+  missing: Array<{ key: string; label: string }>;
+  invalid: Array<{ key: string; message: string }>;
+};
 type ToolRegistration = {
   name: string;
   title: string;
@@ -193,6 +197,9 @@ export function CampaignDashboard() {
   const [isSending, setIsSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [configDiagnostics, setConfigDiagnostics] = useState<ConfigDiagnostics>({ missing: [], invalid: [] });
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [connectedNumber, setConnectedNumber] = useState<string | null>(null);
 
   const counts = useMemo(() => {
     const valid = contacts.filter((contact) => contact.validationStatus === "valid").length;
@@ -202,13 +209,47 @@ export function CampaignDashboard() {
   }, [contacts]);
 
   useEffect(() => {
-    fetch("/api/config", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Configuration unavailable");
-        return response.json() as Promise<{ mode: "demo" | "live" }>;
-      })
-      .then((config) => setMode(config.mode))
-      .catch(() => setMode("offline"));
+    async function checkApi() {
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (!response.ok) throw new Error("The server configuration could not be read");
+        const config = await response.json() as {
+          mode: "demo" | "live";
+          missing?: ConfigDiagnostics["missing"];
+          invalid?: ConfigDiagnostics["invalid"];
+        };
+        setConfigDiagnostics({
+          missing: config.missing ?? [],
+          invalid: config.invalid ?? [],
+        });
+        if (config.mode === "demo") {
+          setMode("demo");
+          return;
+        }
+
+        const testResponse = await fetch("/api/config/test", { cache: "no-store" });
+        const test = await testResponse.json().catch(() => ({})) as {
+          connected?: boolean;
+          displayPhoneNumber?: string | null;
+          verifiedName?: string | null;
+          error?: string;
+          errorCode?: string;
+        };
+        if (!testResponse.ok || !test.connected) {
+          const code = test.errorCode ? `[${test.errorCode}] ` : "";
+          throw new Error(`${code}${test.error ?? "Meta rejected the API connection test"}`);
+        }
+        setConnectedNumber(
+          [test.verifiedName, test.displayPhoneNumber].filter(Boolean).join(" · ") || "Connected number verified",
+        );
+        setLastError(null);
+        setMode("live");
+      } catch (error) {
+        setMode("offline");
+        setLastError(error instanceof Error ? error.message : "The WhatsApp API check failed");
+      }
+    }
+    void checkApi();
   }, []);
 
   const applyImportedContacts = useCallback((nextContacts: ContactResult[], nextFileName: string) => {
@@ -295,6 +336,7 @@ export function CampaignDashboard() {
     if (!fileName || counts.valid === 0 || isSending) return;
     setIsSending(true);
     setSendProgress(2);
+    setLastError(null);
     try {
       let activeCampaignId = campaignId;
       if (!activeCampaignId) {
@@ -327,6 +369,7 @@ export function CampaignDashboard() {
           error?: unknown;
         };
         if (!sendResponse.ok) {
+          await refreshResults(activeCampaignId).catch(() => undefined);
           throw new Error(errorFromResponse(sendBody, "Sending stopped unexpectedly."));
         }
         remaining = Number(sendBody.remaining ?? 0);
@@ -340,7 +383,9 @@ export function CampaignDashboard() {
         ? "Campaign submitted. Immediate WhatsApp API results were saved."
         : "Demo campaign completed. No WhatsApp messages were sent.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sending stopped unexpectedly.");
+      const message = error instanceof Error ? error.message : "Sending stopped unexpectedly.";
+      setLastError(message);
+      toast.error(message);
     } finally {
       setIsSending(false);
     }
@@ -410,8 +455,8 @@ export function CampaignDashboard() {
             <p className="text-xs text-muted-foreground">WhatsApp campaigns</p>
           </div>
           <div className="hidden items-center gap-2 rounded-full border bg-white px-3 py-1.5 text-sm text-muted-foreground sm:flex">
-            <span className={`size-2 rounded-full ${mode === "live" ? "bg-emerald-500" : mode === "demo" ? "bg-amber-500" : "bg-slate-400"}`} />
-            {mode === "loading" ? "Checking API" : mode === "live" ? "WhatsApp API connected" : mode === "demo" ? "Demo mode" : "API unavailable"}
+            <span className={`size-2 rounded-full ${mode === "live" ? "bg-emerald-500" : mode === "demo" ? "bg-amber-500" : mode === "offline" ? "bg-red-500" : "bg-slate-400"}`} />
+            {mode === "loading" ? "Checking API" : mode === "live" ? "WhatsApp API connected" : mode === "demo" ? "Demo mode" : "API check failed"}
           </div>
           <div className="flex size-9 items-center justify-center rounded-full bg-[#17231f] text-sm font-semibold text-white">MC</div>
         </div>
@@ -432,7 +477,7 @@ export function CampaignDashboard() {
           </div>
           {mode === "demo" && (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
-              Demo mode is safe to test. It records simulated results and sends no messages.
+              API setup is incomplete. The dashboard shows the missing settings in the main panel.
             </div>
           )}
         </aside>
@@ -450,6 +495,54 @@ export function CampaignDashboard() {
               </Button>
             </div>
           </div>
+
+          {mode === "demo" && (
+            <div className="mb-5 flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950" role="status">
+              <CircleAlert className="mt-0.5 size-5 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold">WhatsApp API is not configured on this Site</p>
+                <p className="mt-1 text-sm leading-6">
+                  Having these values in Meta does not automatically add them to the deployed dashboard. Add the following in Site Settings → Environment variables, then redeploy:
+                </p>
+                {configDiagnostics.missing.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {configDiagnostics.missing.map((item) => (
+                      <code key={item.key} className="rounded-md border border-amber-300 bg-white/70 px-2 py-1 text-xs">{item.key} · {item.label}</code>
+                    ))}
+                  </div>
+                )}
+                {configDiagnostics.invalid.map((item) => (
+                  <p key={item.key} className="mt-2 text-sm"><code>{item.key}</code>: {item.message}</p>
+                ))}
+                <p className="mt-2 text-xs">For security, the access-token value is never returned to or printed in the browser.</p>
+              </div>
+            </div>
+          )}
+
+          {mode === "offline" && lastError && (
+            <div className="mb-5 flex gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-red-950" role="alert">
+              <CircleAlert className="mt-0.5 size-5 shrink-0" />
+              <div>
+                <p className="font-semibold">WhatsApp API connection failed</p>
+                <p className="mt-1 break-words text-sm leading-6">{lastError}</p>
+                <p className="mt-1 text-xs">Check the token, Phone Number ID, API version, and Meta permissions.</p>
+              </div>
+            </div>
+          )}
+
+          {mode === "live" && connectedNumber && (
+            <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <CheckCircle2 className="size-5 shrink-0" />
+              <span><strong>Connection verified:</strong> {connectedNumber}</span>
+            </div>
+          )}
+
+          {mode === "live" && lastError && (
+            <div className="mb-5 flex gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-red-950" role="alert">
+              <CircleAlert className="mt-0.5 size-5 shrink-0" />
+              <div><p className="font-semibold">Campaign error</p><p className="mt-1 break-words text-sm">{lastError}</p></div>
+            </div>
+          )}
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.7fr)]">
             <Card className="overflow-hidden border-border/80 shadow-[0_12px_38px_rgba(20,38,31,.06)]">

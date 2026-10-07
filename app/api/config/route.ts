@@ -8,5 +8,7 @@ export async function GET() {
     mode: config.live ? "live" : "demo",
     templateName: config.templateName || "mayfair_introduction",
     templateLanguage: config.templateLanguage,
+    missing: config.missing,
+    invalid: config.invalid,
   });
 }

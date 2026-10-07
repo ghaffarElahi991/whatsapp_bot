@@ -17,13 +17,25 @@ export function getMetaConfig() {
     templateLanguage: env.META_TEMPLATE_LANGUAGE?.trim() || "en",
     graphApiVersion: env.META_GRAPH_API_VERSION?.trim(),
   };
-  const live = Boolean(
-    config.accessToken &&
-      config.phoneNumberId &&
-      config.templateName &&
-      config.graphApiVersion,
-  );
-  return { ...config, live };
+  const missing = [
+    !config.accessToken ? { key: "META_ACCESS_TOKEN", label: "Access token" } : null,
+    !config.phoneNumberId ? { key: "META_PHONE_NUMBER_ID", label: "Phone Number ID" } : null,
+    !config.templateName ? { key: "META_TEMPLATE_NAME", label: "Template name" } : null,
+    !config.graphApiVersion ? { key: "META_GRAPH_API_VERSION", label: "Graph API version" } : null,
+  ].filter((item): item is { key: string; label: string } => Boolean(item));
+  const invalid = [
+    config.phoneNumberId && !/^\d+$/.test(config.phoneNumberId)
+      ? { key: "META_PHONE_NUMBER_ID", message: "Phone Number ID must contain digits only" }
+      : null,
+    config.graphApiVersion && !/^v\d+\.\d+$/.test(config.graphApiVersion)
+      ? { key: "META_GRAPH_API_VERSION", message: "Graph API version must look like v24.0" }
+      : null,
+    config.templateName && !/^[a-z0-9_]+$/.test(config.templateName)
+      ? { key: "META_TEMPLATE_NAME", message: "Template name must use lowercase letters, numbers, and underscores" }
+      : null,
+  ].filter((item): item is { key: string; message: string } => Boolean(item));
+  const live = missing.length === 0 && invalid.length === 0;
+  return { ...config, live, missing, invalid };
 }
 
 export type SendResult = {
