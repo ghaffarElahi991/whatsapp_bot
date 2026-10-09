@@ -62,3 +62,4 @@ Webhook tracking is intentionally excluded from this version. A successful resul
 - Authentication, access, payment, and template configuration errors pause the campaign.
 - Completed rows are stored so a retry does not resend them.
 - Detailed local and WhatsApp errors are retained in the downloadable report.
+# whatsapp_bot
