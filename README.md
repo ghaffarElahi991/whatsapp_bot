@@ -27,6 +27,12 @@ Format phone cells as **Text** in Excel to preserve `+` and leading zeroes.
 
 ## Development
 
+### macOS quick start
+
+See [ReadmeForMac.md](./ReadmeForMac.md) for complete MacBook installation instructions, or double-click `Start Mayfair WhatsApp.command` after cloning the repository and installing Node.js 22.
+
+### Manual setup
+
 ```bash
 npm install
 npm run db:generate
